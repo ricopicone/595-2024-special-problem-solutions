@@ -1,6 +1,4 @@
 #%% [markdown]
-# # Special Problem: MNIST Classification with a Deep Feedforward Neural Network
-# 
 # Create and train a feedforward NN for the MNIST data used in Brunton 4.4. Report plots of the training and testing loss for each training epoch. Report the testing accuracy of the trained model. Hand-optimize hyperparameters such as the learning rate and metaparameters such as the number of layers, number of units per layer, etc. Use Keras with TensorFlow.
 
 #%% [markdown]
