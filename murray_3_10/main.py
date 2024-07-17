@@ -199,10 +199,11 @@ for B in Bs:
 fig, ax = plt.subplots()
 ax.plot(t, input_d[0], 'k', linewidth=0.5)
 ax.plot(t, input_d[1], 'k', linewidth=0.5)
-ax.plot(t, output[0], label=f'$x_1$ ($B = B_1$)')
-ax.plot(t, output[1], label=f'$x_2$ ($B = B_2$)')
-ax.plot(t, output_int[0], '--', label=f'$x_1$ (integral, $B = B_1$)')
-ax.plot(t, output_int[1], '--', label=f'$x_2$ (integral, $B = B_2$)')
+for i in range(len(Bs)):
+    ax.plot(t, outputs[i][0], label=f'$x_1$ ($B = B_{i}$)')
+    ax.plot(t, outputs[i][1], label=f'$x_2$ ($B = B_{i}$)')
+    ax.plot(t, outputs_int[i][0], '--', label=f'$x_1$ (integral, $B = B_{i}$)')
+    ax.plot(t, outputs_int[i][1], '--', label=f'$x_2$ (integral, $B = B_{i}$)')
 ax.legend()
 plt.show()
 
