@@ -32,7 +32,7 @@ xd = np.array([[1], [0]])  # Desired equil. state (given)
 ud = np.array([[1]])  # Desired equil. input (from 0 = A*xd + B*ud)
     # This could be computed automatically, but it's a little involved
     # because in general the system is overdetermined.
-if (A @ xd + B @ ud != np.zeros_like(xd)).any():  # Check if the desired equil. point is valid
+if (A @ xd + B @ ud != np.zeros_like(xd)).any():  # Check validity
     raise ValueError('The desired equilibrium point is not valid.')
 
 #%% [markdown]
