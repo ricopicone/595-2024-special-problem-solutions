@@ -104,8 +104,8 @@ plt.draw()
 nt2 = 2*nt  # More is OK due to the efficiency of Bezier curves
 t2 = np.linspace(0, tf, nt2)
 x_init2, u_init2 = init_straight(x0, xf, u0, t2)
-solve_time_start = time.time()
 basis = fs.BezierFamily(8, T=tf)
+solve_time_start = time.time()
 opt2 = opt.solve_ocp(
     pvtol, t2, x0, cost, log=True,
     initial_guess=(x_init2, u_init2),
@@ -179,4 +179,65 @@ print(f"Optimization time: {solve_time_end - solve_time_start:.2f} s")
 print(f"Initial position: {opt4.states[0:2, 0]}")
 print(f"Final position: {opt4.states[0:2, -1]}")
 plot_results(opt4.time, opt4.states, opt4.inputs)
+plt.draw()
+
+#%% [markdown]
+# The terminal constraint has forced the final state to be exactly at the desired final state.
+#
+# Now we will exploit the (near) differential flatness of the PVTOL system to compute an optimal trajectory.
+# The `pvtol` object is a `control.flatsys.FlatSystem` object.
+# The forward map of $x$ and $u$ and their time derivatives to a flat output $\overline{z}$ is defined in the `pvtol` module as `_pvtol_flat_forward()`.
+# The inverse map from $\overline{z}$ to $x$ and $u$ and its derivatives is defined as `_pvtol_flat_reverse()`.
+# A `FlatSystem` object can be passed to the `control.flatsys.point_to_point()` function to compute a trajectory that starts at one point and ends at another and satisfies dynamics constraints (this is the primary advantage to finding a flat output for a system).
+# Consider the following:
+
+#%%
+solve_time_start = time.time()
+flat_traj = fs.point_to_point(
+    pvtol, timepts=t2, x0=x0, u0=ueq, xf=xf, uf=ueq
+)
+print(f"Flat solve time: {solve_time_end - solve_time_start:.2f} s")
+
+#%% [markdown]
+# Extract the optimal trajectory and plot the results as follows:
+
+#%%
+flat_traj.states, flat_traj.inputs = flat_traj.eval(t2)
+print(f"Initial position: {flat_traj.states[0:2, 0]}")
+print(f"Final position: {flat_traj.states[0:2, -1]}")
+plot_results(t2, flat_traj.states, flat_traj.inputs)
+plt.draw()
+
+#%% [markdown]
+# The flatness-based trajectory is smoother and faster to compute than the numerical optimization-based trajectories.
+# The flatness-based trajectory ends essentially exactly at the desired final state.
+#
+# Note that the flatness-based trajectory is not necessarily optimal in the sense of minimizing a cost function.
+# There is an option to add a cost function to the `point_to_point()` function, but I had trouble getting it to yield a good result.
+#
+# Finally, let's attempt to use the flatness-based trajectory as the feedforward input to a state feedback controller.
+
+#%%
+_, y = control.forced_response(
+    pvtol, T=t2, X0=x0, U=flat_traj.inputs, params={"c": 0}
+)
+
+#%% [markdown]
+# Plot the position response of the feedforward system as follows:
+
+#%%
+fig, ax = plt.subplots()
+ax.plot(t2, flat_traj.states[0], 'b', linewidth=0.5, label='Simulated $x$')
+ax.plot(t2, flat_traj.states[1], 'r', linewidth=0.5, label='Simulated $y$')
+ax.plot(t2, flat_traj.states[2], 'g', linewidth=0.5, label='Simulated $\\theta$')
+ax.plot(t2, y[0], 'b.', label='Flat $x$')
+ax.plot(t2, y[1], 'r.', label='Flat $y$')
+ax.plot(t2, y[2], 'g.', label='Flat $\\theta$')
+ax.set_xlabel('Time (s)')
+ax.set_ylabel('State')
+ax.legend()
 plt.show()
+
+#%% [markdown]
+# The simulated position state and the predicted flat position state trajectories are quite close.
+# With feedback control, the actual position state trajectories would likely be even closer to the predicted flat position state trajectories.
