@@ -1,5 +1,6 @@
 #%% [markdown]
 # In this problem, we will design a model predictive controller (MPC) for the planar vertical takeoff and landing (PVTOL) system.
+# The MPC will use feedforward predictions of future states to optimize the input over a finite time horizon.
 #
 # Begin by importing the necessary libraries and modules as follows:
 
@@ -39,7 +40,7 @@ print(f'Equilibrium state: {xeq}')
 print(f'Equilibrium input: {ueq}')
 
 #%% [markdown]
-# Let's define a function to simulate an MPC controller for the PVTOL system:
+# Let's define a function to simulate an MPC controller for the PVTOL system, including future considerations of the disturbance input and feedback control:
 
 #%%
 def simulate_mpc(
@@ -50,6 +51,7 @@ def simulate_mpc(
     x0,  # Initial state
     u0,  # Initial input
     disturbance_fun=None,  # Function to compute disturbance
+    feedback=False,  # Feedback control included in sys
 ):
     """Simulate MPC controller for a system"""
     # Extract time parameters
@@ -63,10 +65,12 @@ def simulate_mpc(
     u = np.zeros((sys.ninputs, len(t)*nt+1))  # Simulated inputs
     x_pred = np.zeros((sys.nstates, len(t), nt_ocp))  # Predicted states
     ninputs = sys.ninputs
+    npredinputs = ninputs
     if disturbance_fun is not None:
-        u_pred = np.zeros((ninputs-1, len(t), nt_ocp))  # Predicted inputs
-    else:
-        u_pred = np.zeros((ninputs, len(t), nt_ocp))
+        npredinputs += -1
+    if feedback:
+        npredinputs += -6
+    u_pred = np.zeros((npredinputs, len(t), nt_ocp))
     # Loop over update times
     for i in range(0, len(t)):
         j = i*nt  # Index for update timesteps
@@ -81,13 +85,16 @@ def simulate_mpc(
               f"Trajectory computation time: {comp_traj_time:.2f} s")
         # Extract predicted state and inputs
         x_pred[:, i, :] = traj.states
-        u_pred[:, i, :] = traj.inputs
+        u_pred[:, i, :] = traj.inputs[:2]
         # Simulate the system over the update time/trajectory
-        if disturbance_fun is None:
-            inputs = traj.inputs
-        else:
+        inputs = traj.inputs
+        if feedback:  # Closed-loop command [xd, ud]
             inputs = np.vstack(
-                [traj.inputs, disturbance_fun(t[i] + traj.time)]
+                [traj.states, inputs]
+            )
+        if disturbance_fun is not None:
+            inputs = np.vstack(
+                [inputs, disturbance_fun(t[i] + traj.time)]
             )
         sim = control.input_output_response(
             sys, traj.time[:nt+1], inputs[:, :nt+1], X0=x0
@@ -108,38 +115,47 @@ xf = xeq + np.array([10, 5, 0, 0, 0, 0])  # Final state
 Q = np.diag([1, 1, 10, 0, 0, 0])  # State cost matrix
 R = np.diag([10, 1])  # Input cost matrix
 cost = opt.quadratic_cost(pvtol, Q=Q, R=R, x0=xf, u0=ueq)  # J
+Q_term = 5*Q  # Terminal cost matrix (improved results)
 
 #%% [markdown]
-# Set up the time horizon and time steps for the trajectory:
+# Set up the time horizon and time steps for the trajectory.
+# The longer the time horizon, the more optimal the solution, but the longer the computation time.
+# As we will see, the computation time will still be too long for real-time applications.
+# In a real-time application, we would attempt to optimize the computation time.
+# We will also set up the optimal control problem (OCP) object, including trajectory constraints and a terminal cost to improve the results:
 
 #%%
 T = 3  # Time horizon
 nt = 31  # Number of time steps for OCP
 t_ocp = np.linspace(0, T, nt)  # Time steps for OCP
+A_con = np.array([[-1, -0.1], [1, -0.1], [0, -1], [0, 1]])
+b_con = [0, 0, 0, 1.5 * pvtol.params['m'] * pvtol.params['g']]
 traj_constraints = opt.input_poly_constraint(
-    pvtol, np.array([[-1, -0.1], [1, -0.1], [0, -1], [0, 1]]),
-    [0, 0, 0, 1.5 * pvtol.params['m'] * pvtol.params['g']])
-# Terminal cost from LQR
-_, P1, _ = control.lqr(pvtol.linearize(xeq, ueq), Q, R)
+    pvtol, A_con, b_con
+)  # A [F1, F2] <= b - Results improved with these constraints
 ocp = opt.OptimalControlProblem(
-    pvtol, t_ocp, cost, trajectory_constraints=traj_constraints,
-    terminal_cost=opt.quadratic_cost(pvtol, P1, None, x0=xf, u0=ueq),
+    pvtol, t_ocp, cost, 
+    trajectory_constraints=traj_constraints,
+    terminal_cost=opt.quadratic_cost(pvtol, Q_term, None, x0=xf, u0=ueq),
 )  # OCP object
 
 #%% [markdown]
 # Simulate the MPC controller for the PVTOL system:
 
 #%%
-t_end = 6  # Simulation end time
+t_end = 10  # Simulation end time
 dt = 1  # Update time step
 t, t_pred, t_sim, x, u, x_pred, u_pred = simulate_mpc(
     pvtol, ocp=ocp, t_end=t_end, dt=dt, x0=x0, u0=ueq
 )
 
 #%% [markdown]
-# Plot the predicted and simulated states and inputs:
+# Plot the predicted and simulated states and inputs.
+# First, define a function to plot the results:
 #%%
-def plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred):
+def plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred, feedback=False):
+    if feedback:
+        u = u[6:8]
     fig, ax = plt.subplots(2, 1, sharex=True)
     for i in range(0, len(t)):  # Plot predicted states
         ax[0].plot(t[i], x_pred[0, i, 0], 'k.')
@@ -173,6 +189,11 @@ def plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred):
 fig, ax = plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred)
 
 #%% [markdown]
+# The results show that the MPC performs well.
+# Note that despite the predicted trajectory over the horizon does not match the simulated results perfectly.
+# However, the frequent updates of the predicted trajectory allow the feedforward controller to adjust the input to track the desired trajectory.
+# In a sense, the "feedforward" controller is a form of feedback control because it is updated frequently by the measured state.
+# 
 # # Feedforward MPC with Wind Disturbance
 #
 # We can use the same MPC controller as before, but now we will add a wind disturbance to the system.
@@ -194,6 +215,10 @@ t, t_pred, t_sim, x, u, x_pred, u_pred = simulate_mpc(
 fig, ax = plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred)
 
 #%% [markdown]
+# The results show that the MPC controller is not as effective in the presence of the wind disturbance.
+# The predictions are not as accurate, and the controller struggles to track the desired trajectory.
+# However, the tracking is not as bad as we might expect, due to the frequent updates.
+#
 # # Feedforward and Feedback MPC with Wind Disturbance
 #
 # We can improve the performance of the MPC controller by adding a feedback term to the input.
@@ -212,7 +237,7 @@ K, _, _ = control.lqr(pvtol.linearize(xeq, ueq), Q, R)  # Feedback gain
 #%%
 def lqr_output(t, x, u, params):
     xd, ud, x = u[0:6], u[6:8], u[8:14]  # Extract inputs
-    return ud - K @ (xd - x)  # Feedforward/feedback control law
+    return ud - K @ (x - xd)  # Feedforward/feedback control law
 
 #%% [markdown]
 # Define the LQR controller as an input-output system:
@@ -243,12 +268,18 @@ pvtol_windy_ctrl = control.interconnect(
 #%%
 t, t_pred, t_sim, x, u, x_pred, u_pred = simulate_mpc(
     pvtol_windy_ctrl, ocp=ocp, t_end=t_end, dt=dt, x0=x0, u0=ueq,
-    disturbance_fun=np.sin
+    disturbance_fun=np.sin, feedback=True
 )
 
 #%% [markdown]
 # Plot the predicted and simulated states and inputs:
 
 #%%
-fig, ax = plot_results(t, t_pred, t_sim, x, u, x_pred, u_pred)
+fig, ax = plot_results(
+    t, t_pred, t_sim, x, u, x_pred, u_pred, feedback=True
+)
 plt.show()
+
+#%% [markdown]
+# This result shows that the trajectory tracking is significantly improved with the feedback term.
+# The controller can adjust the input more frequently (instead of only once per second) to account for the wind disturbance and track the desired trajectory more accurately.
