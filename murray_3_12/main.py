@@ -196,6 +196,7 @@ solve_time_start = time.time()
 flat_traj = fs.point_to_point(
     pvtol, timepts=t2, x0=x0, u0=ueq, xf=xf, uf=ueq
 )
+solve_time_end = time.time()
 print(f"Flat solve time: {solve_time_end - solve_time_start:.2f} s")
 
 #%% [markdown]
