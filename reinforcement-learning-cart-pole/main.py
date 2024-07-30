@@ -24,7 +24,7 @@ import time
 # Set up the cart-pole environment as follows:
 
 #%%
-env = gym.make('CartPole-v1', render_mode='rgb_array')  # Create the cart-pole environment
+env = gym.make('CartPole-v1', render_mode=None)  # Create the cart-pole environment
 env.reset()  # Reset the environment to the initial state
 
 #%% [markdown]
@@ -90,8 +90,8 @@ def value_network_com(optimizer):
 # Define the optimizers for the policy and value networks:
 
 #%%
-optimizer_policy = tf.keras.optimizers.Adam(learning_rate=0.01)
-optimizer_value = tf.keras.optimizers.Adam(learning_rate=0.01)
+optimizer_policy = tf.keras.optimizers.Adam(learning_rate=0.001)
+optimizer_value = tf.keras.optimizers.Adam(learning_rate=0.001)
 
 #%% [markdown]
 # Define the policy and value networks:
@@ -123,30 +123,38 @@ def updater(policy_network, value_network, state, action, state_next, reward, ga
     value_network: Updated value network
     """
     with tf.GradientTape(persistent=True) as tape:
+        tf.keras.utils.disable_interactive_logging()  # Suppress bars
         state = state.reshape(1, -1)  # 2D array
         state_next = state_next.reshape(1, -1)  # 2D array
-        # Value and its update
+
+        # TD(0) error
         value = value_network(state)  # Value of the current state
         value_next = value_network(state_next)  # Value of the next state
         td_target = reward + gamma * value_next  # TD(0) target
         td_error = td_target - value  # TD(0) error
-        value_loss = tf.square(td_error)  # Value loss (MSE)
-        value_grads = tape.gradient(
-            value_loss, value_network.trainable_variables
-        )  # Gradient of the loss function wrt the value network parameters
-        optimizer_value.apply_gradients(
-            zip(value_grads, value_network.trainable_variables)
-        )  # Update the value network parameters
-        # Policy and its update
+
+        # Losses
         action_prob = policy_network(state)[0, action]  # Prob of action taken
         log_prob = tf.math.log(action_prob)  # Log prob of action taken
         policy_loss = -log_prob * td_error  # Policy loss
+        value_loss = tf.square(td_error)  # Value loss (MSE)
+
+        # Gradients
         policy_grads = tape.gradient(
             policy_loss, policy_network.trainable_variables
         )  # Gradient of the loss function wrt the policy network parameters
+        value_grads = tape.gradient(
+            value_loss, value_network.trainable_variables
+        )  # Gradient of the loss function wrt the value network parameters
+
+        # Apply gradients
         optimizer_policy.apply_gradients(
             zip(policy_grads, policy_network.trainable_variables)
         )  # Update the policy network parameters
+        optimizer_value.apply_gradients(
+            zip(value_grads, value_network.trainable_variables)
+        )  # Update the value network parameters
+
     return policy_network, value_network
 
 #%% [markdown]
@@ -173,20 +181,20 @@ def train_policy_value_networks(env, policy_network, value_network, updater, n_e
     """
     rewards = []
     for episode in range(n_episodes):
-        state, _ = env.reset()
-        episode_rewards = []
+        state, _ = env.reset()  # Reset env (random initial state)
+        episode_rewards = []  
         for step in range(max_episode_steps):
             prob = policy_network.predict(state.reshape((1, -1)))[0]
             action = np.random.choice(env.action_space.n, p=prob)
-            if print_:
-                print("Episode", episode, "Step", step, "State", state, "Action", action)
             state_new, reward, term, _, _ = env.step(action)
             episode_rewards.append(reward)
             policy_network, value_network = updater(policy_network, value_network, state, action, state_new, reward, gamma)
             if term:
                 break
             state = state_new
-        rewards.append(episode_rewards)
+        if print_:
+            print(f"Episode {episode + 1}/{n_episodes}. Reward sum: {sum(episode_rewards)}")
+        rewards.append(sum(episode_rewards))
     return policy_network, value_network, rewards
 
 #%% [markdown]
@@ -194,7 +202,9 @@ def train_policy_value_networks(env, policy_network, value_network, updater, n_e
 
 #%%
 policy_network, value_network, rewards = train_policy_value_networks(
-    env, policy_network, value_network, updater, n_episodes=20, gamma=0.99, max_episode_steps=100, print_=True)
+    env, policy_network, value_network, updater, 
+    n_episodes=100, gamma=0.99, max_episode_steps=600, print_=True
+)
 
 #%% [markdown]
 # ## Plot the Rewards
@@ -203,7 +213,35 @@ policy_network, value_network, rewards = train_policy_value_networks(
 
 #%%
 episodes = np.arange(len(rewards))
-plt.plot(episodes, [sum(episode) for episode in rewards], label='Episode Reward')
+plt.plot(episodes, rewards)
 plt.xlabel('Episode')
 plt.ylabel('Reward')
+plt.draw()
+
+#%% [markdown]
+# Plot a sample of the value network for the pole (pendulum) angle as follows:
+
+#%%
+angles = np.linspace(-0.418, 0.418, 101)  # Pole angles
+values = np.zeros((len(angles)))  # Value
+for i in range(len(angles)):
+    state = np.array([0, angles[i], 0, 0])  # State
+    values[i] = value_network(state.reshape(1, -1)).numpy()[0][0]
+fig, ax = plt.subplots()
+ax.plot(angles, values)
+ax.set_xlabel('Pole Angle')
+ax.set_ylabel('Value')
+plt.draw()
+
+#%% [markdown]
+# Plot a sample of the policy network for the pole (pendulum) angle as follows:
+
+#%%
+plt.figure()
+for i in range(len(angles)):
+    state = np.array([0, angles[i], 0, 0])  # State
+    prob = policy_network.predict(state.reshape((1, -1)))[0]
+    plt.plot([angles[i], angles[i]], [0, prob[1]], 'b')
+plt.xlabel('Pole Angle')
+plt.ylabel('Probability of Pushing Right')
 plt.show()
