@@ -7,7 +7,7 @@
 # Note that this has a discrete action space, able to push the cart with a force a unit leftward (0) or rightward (1). 
 # Train for several episodes and display the results.
 #
-# ## Load Packages
+# ## Load Packages and Set Script Parameters
 #
 # Begin by importing the necessary packages as follows:
 
@@ -18,6 +18,18 @@ from matplotlib.animation import FuncAnimation
 import gymnasium as gym
 import tensorflow as tf
 import time
+import animation  # Import the animation module (animation.py)
+
+#%% [markdown]
+# Set script parameters as follows:
+
+#%%
+retrain = False  # Retrain the policy and value networks
+save = False  # Save the rewards and policy and value networks
+file_rewards = 'rewards.npy'  # File to save the rewards
+file_policy = 'policy_network.keras'  # File to save the policy network
+file_value = 'value_network.keras'  # File to save the value network
+n_episodes = 100  # Number of episodes to train from
 
 #%% [markdown]
 # ## Set Up the Cart-Pole Environment
@@ -25,7 +37,8 @@ import time
 # Set up the cart-pole environment as follows:
 
 #%%
-env = gym.make('CartPole-v1', render_mode=None)  # Create the cart-pole environment
+# env = gym.make('CartPole-v1', render_mode='human')  # Create environment
+env = gym.make('CartPole-v1', render_mode=None)  # Create environment
 env.reset()  # Reset the environment to the initial state
 
 #%% [markdown]
@@ -39,8 +52,8 @@ print("Observation space:", env.observation_space)
 # Test the environment by taking random actions for an episode and visualizing the results:
 
 #%%
-for i in range(100):
-    time.sleep(0.03)  # Pause loop for rendering
+for i in range(20):
+    # time.sleep(0.03)  # Pause loop for rendering
     s_new, r_new, term, trunc, info = env.step(
         env.action_space.sample()
     )  # Take a random action
@@ -91,8 +104,8 @@ def value_network_com(optimizer):
 # Define the optimizers for the policy and value networks:
 
 #%%
-optimizer_policy = tf.keras.optimizers.Adam(learning_rate=0.0001)
-optimizer_value = tf.keras.optimizers.Adam(learning_rate=0.0001)
+optimizer_policy = tf.keras.optimizers.Adam(learning_rate=0.001)
+optimizer_value = tf.keras.optimizers.Adam(learning_rate=0.001)
 
 #%% [markdown]
 # Define the policy and value networks:
@@ -143,10 +156,10 @@ def updater(policy_network, value_network, state, action, state_next, reward, ga
         # Gradients
         policy_grads = tape.gradient(
             policy_loss, policy_network.trainable_variables
-        )  # Gradient of the loss function wrt the policy network parameters
+        )  # Gradient of the loss function wrt policy network parameters
         value_grads = tape.gradient(
             value_loss, value_network.trainable_variables
-        )  # Gradient of the loss function wrt the value network parameters
+        )  # Gradient of the loss function wrt value network parameters
 
         # Clip gradients
         policy_grads = tf.clip_by_global_norm(policy_grads, 10.0)[0]
@@ -163,102 +176,23 @@ def updater(policy_network, value_network, state, action, state_next, reward, ga
     return policy_network, value_network
 
 #%% [markdown]
-# Define an animation class to plot a sample of the policy network for the pole (pendulum) angle as follows:
-
-#%%
-class angle_policy_animation:
-    def __init__(self, policy_network, n_points=51, refresh_interval=1000):
-        self.policy_network = policy_network
-        self.n_points = n_points
-        self.refresh_interval = refresh_interval
-        fig, ax = plt.subplots()
-        self.fig = fig
-        self.ax = ax
-        self.angles = np.linspace(-0.418, 0.418, n_points)  # Pole angles
-        self.barcollection_left = None
-        self.barcollection_right = None
-        self.initialize_plot()
-
-    def initialize_plot(self):
-        self.fig, self.ax = plt.subplots()
-        left_probs = np.zeros((self.n_points))
-        right_probs = np.zeros((self.n_points))
-        for i in range(self.n_points):
-            state = np.array([0, self.angles[i], 0, 0])
-            prob = self.policy_network.predict(state.reshape((1, -1)))[0]
-            left_probs[i] = prob[0]
-            right_probs[i] = prob[1]
-        self.barcollection_left = self.ax.bar(self.angles, left_probs, width=0.01, color='b')
-        self.barcollection_right = self.ax.bar(self.angles, right_probs, width=0.01, bottom=left_probs, color='r')
-        self.ax.set_xlabel('Pole Angle')
-        self.ax.set_ylabel('Probability')
-        self.ax.legend(['Push Left', 'Push Right'])
-    
-    def update(self, frame):
-        left_probs = np.zeros((self.n_points))
-        right_probs = np.zeros((self.n_points))
-        for i in range(self.n_points):
-            state = np.array([0, self.angles[i], 0, 0])
-            prob = self.policy_network.predict(state.reshape((1, -1)))[0]
-            left_probs[i] = prob[0]
-            right_probs[i] = prob[1]
-        self.barcollection_left = self.ax.bar(self.angles, left_probs, width=0.01, color='b')
-        self.barcollection_right = self.ax.bar(self.angles, right_probs, width=0.01, bottom=left_probs, color='r')
-        return self.barcollection_left, self.barcollection_right
-    
-    def animate(self):
-        anim = FuncAnimation(self.fig, self.update, frames=None, interval=self.refresh_interval,
-                             blit=False)
-        return anim
-
-#%% [markdown]
-# Define a similar animation class to plot a sample of the value network for the pole (pendulum) angle as follows:
-
-#%%
-class angle_value_animation:
-    def __init__(self, value_network, n_points=51, refresh_interval=1000):
-        self.value_network = value_network
-        self.n_points = n_points
-        self.refresh_interval = refresh_interval
-        fig, ax = plt.subplots()
-        self.fig = fig
-        self.ax = ax
-        self.angles = np.linspace(-0.418, 0.418, n_points)  # Pole angles
-        self.values = np.zeros((n_points))
-        self.initialize_plot()
-
-    def initialize_plot(self):
-        self.fig, self.ax = plt.subplots()
-        for i in range(self.n_points):
-            state = np.array([0, self.angles[i], 0, 0])
-            self.values[i] = self.value_network(state.reshape(1, -1)).numpy()[0][0]
-        self.ax.plot(self.angles, self.values)
-        self.ax.set_xlabel('Pole Angle')
-        self.ax.set_ylabel('Value')
-    
-    def update(self, frame):
-        self.ax.clear()
-        for i in range(self.n_points):
-            state = np.array([0, self.angles[i], 0, 0])
-            self.values[i] = self.value_network(state.reshape(1, -1)).numpy()[0][0]
-        self.ax.plot(self.angles, self.values)
-        return self.ax
-    
-    def animate(self):
-        anim = FuncAnimation(self.fig, self.update, frames=None, interval=self.refresh_interval,
-                             blit=False)
-        return anim
-
-
-#%% [markdown]
+# In `animation.py`, we define two animation classes to monitor the training.
+# The first, `Angle_policy_animation`, plots a sample of the policy network for the pole (pendulum) angle with all other states set to 0.
+# Our intuition is that the policy network should output a higher probability of pushing the cart in the direction that will bring the pole closer to the vertical position (i.e., leftward if the pole is leaning left and rightward if the pole is leaning right).
+# The second, `Angle_value_animation`, plots a sample of the value network for the pole (pendulum) angle with all other states set to 0.
+# Here our intuition is that the value network should output a higher value for the pole angle closer to the vertical position.
 #
-# Define a function to train the policy and value networks using a temporal difference TD(0) method as follows:
+# We are now ready to define a function to train the policy and value networks using a temporal difference TD(0) method (i.e., the `updater()` function we defined) as follows:
 
 #%%
-def train_policy_value_networks(env, policy_network, value_network, updater, n_episodes=1000, gamma=0.99, max_episode_steps=100, plot=False, print_=False):
-    """Train policy and value networks using a temporal difference TD(0) method.
+def train_policy_value_networks(
+        env, policy_network, value_network, updater, 
+        n_episodes=1000, gamma=0.99, max_episode_steps=100, 
+        plot=False, print_=False
+):
+    """Train policy and value networks using a temporal difference TD(0) method
 
-    Update the policy and value networks using the updater function.
+    Update the policy and value networks using the updater() function.
 
     Args:
     policy_network (keras.models.Sequential): Policy network
@@ -274,29 +208,38 @@ def train_policy_value_networks(env, policy_network, value_network, updater, n_e
     """
     rewards = []
     if plot:
-        animation_policy = angle_policy_animation(policy_network).animate()
-        animation_value = angle_value_animation(value_network).animate()
+        animation_policy = animation.Angle_policy_animation(policy_network).animate()
+        animation_value = animation.Angle_value_animation(value_network).animate()
     for episode in range(n_episodes):
         if plot:
             animation_policy.policy_network = policy_network
-            plt.figure(animation_policy._fig.number)
-            plt.pause(0.2)
+            plt.figure(animation_policy._fig.number)  # Activate figure
+            plt.pause(0.01)  # Pause for rendering
             animation_value.value_network = value_network
-            plt.figure(animation_value._fig.number)
-            plt.pause(0.2)
+            plt.figure(animation_value._fig.number)  # Activate figure
+            plt.pause(0.01)  # Pause for rendering
         state, _ = env.reset()  # Reset env (random initial state)
         episode_rewards = []  
         for _ in range(max_episode_steps):
-            prob = policy_network.predict(state.reshape((1, -1)))[0]
+            prob = policy_network(state.reshape((1, -1))).numpy()[0]
+                # Get action probabilities from policy network
             action = np.random.choice(env.action_space.n, p=prob)
-            state_new, reward, term, _, _ = env.step(action)
+                # Sample action from policy network
+            state_new, reward, term, trunc, _ = env.step(action)  # Enact
             episode_rewards.append(reward)
-            policy_network, value_network = updater(policy_network, value_network, state, action, state_new, reward, gamma)
-            if term:
+            policy_network, value_network = updater(
+                policy_network, value_network, 
+                state, action, state_new, 
+                reward, gamma
+            )  # Update the policy and value networks
+            if term or trunc:
                 break
             state = state_new
         if print_:
-            print(f"Episode {episode + 1}/{n_episodes}. Reward sum: {sum(episode_rewards)}")
+            print(f"Episode {episode + 1}/{n_episodes}. "
+                  f"Reward sum: {sum(episode_rewards)}"
+                  f"\t{int(sum(episode_rewards)/500*100)*'='}"
+            )
         rewards.append(sum(episode_rewards))
     return policy_network, value_network, rewards
 
@@ -304,25 +247,40 @@ def train_policy_value_networks(env, policy_network, value_network, updater, n_e
 # Train the policy and value networks
 
 #%%
-policy_network, value_network, rewards = train_policy_value_networks(
-    env, policy_network, value_network, updater, 
-    n_episodes=100, gamma=0.99, max_episode_steps=600, 
-    plot=True, print_=True
-)
+if retrain:
+    policy_network, value_network, rewards = train_policy_value_networks(
+        env, policy_network, value_network, updater, 
+        n_episodes=n_episodes, gamma=0.99, max_episode_steps=500, 
+        plot=True, print_=True
+    )
+    if save:
+        policy_network.save(file_policy)  # Save the policy network
+        value_network.save(file_value)  # Save the value network
+        np.save(file_rewards, rewards)  # Save the rewards
+else:
+    policy_network = tf.keras.models.load_model(file_policy)
+    value_network = tf.keras.models.load_model(file_value)
+    rewards = np.load(file_rewards)
 
 #%% [markdown]
-# ## Plot the Rewards
+# ## Plot the Results
 #
 # Plot the rewards as follows:
 
 #%%
 episodes = np.arange(len(rewards))
+plt.figure()
 plt.plot(episodes, rewards)
 plt.xlabel('Episode')
 plt.ylabel('Reward')
 plt.draw()
 
 #%% [markdown]
+# This plot shows the reward obtained in each episode. 
+# The reward is the sum of the rewards obtained in each step of the episode (i.e., how long the pole was kept upright).
+# Because our method is on-policy, the reward is expected to increase over time as the policy network improves.
+# We observe that on average the reward does in fact increase over time.
+#
 # Plot a sample of the policy network for the pole (pendulum) angle as follows:
 
 #%%
@@ -331,18 +289,22 @@ angles = np.linspace(-0.418, 0.418, 101)  # Pole angles
 probs_left = np.zeros((101))  # Probability of pushing left
 probs_right = np.zeros((101))  # Probability of pushing right
 for i in range(len(angles)):
-    state = np.array([0, angles[i], 0, 0])  # State
-    prob = policy_network.predict(state.reshape((1, -1)))[0]  # Probabilities
+    state = np.array([0, 0, angles[i], 0])  # State
+    prob = policy_network(state.reshape((1, -1))).numpy()[0]  # Probabilities
     probs_left[i] = prob[0]
     probs_right[i] = prob[1]
-ax.bar(angles, probs_left, width=0.01, color='b')
-ax.bar(angles, probs_right, width=0.01, bottom=probs_left, color='r')
+ax.bar(angles, probs_left, width=0.005, color='b')
+ax.bar(angles, probs_right, width=0.005, bottom=probs_left, color='r')
 ax.set_xlabel('Pole Angle')
 ax.set_ylabel('Probability')
 ax.legend(['Push Left', 'Push Right'])
 plt.draw()
 
 #%% [markdown]
+# This plot shows the probability of pushing the cart left or right for different pole angles.
+# We observe that the policy network outputs a higher probability of pushing the cart in the direction that will bring the pole closer to the vertical position (i.e., leftward if the pole is leaning left and rightward if the pole is leaning right).
+# This is consistent with our intuition of an optimal policy.
+#
 # Plot a sample of the value network for the pole (pendulum) angle as follows:
 
 #%%
@@ -350,10 +312,14 @@ fig, ax = plt.subplots()
 angles = np.linspace(-0.418, 0.418, 101)  # Pole angles
 values = np.zeros((101))  # Value
 for i in range(len(angles)):
-    state = np.array([0, angles[i], 0, 0])  # State
+    state = np.array([0, 0, angles[i], 0])  # State
     values[i] = value_network(state.reshape(1, -1)).numpy()[0][0]
-fig, ax = plt.subplots()
 ax.plot(angles, values)
 ax.set_xlabel('Pole Angle')
 ax.set_ylabel('Value')
 plt.show()
+
+#%% [markdown]
+# This plot shows the value of the pole angle.
+# We observe that the value network outputs a higher value for the pole angle closer to the vertical position.
+# This is consistent with our intuition of an optimal value function.
