@@ -50,7 +50,7 @@ class Angle_policy_animation:
     
     def animate(self):
         anim = FuncAnimation(self.fig, self.update, frames=None, interval=self.refresh_interval,
-                             blit=False)
+                             blit=False, cache_frame_data=False)
         return anim
 
 
@@ -90,5 +90,5 @@ class Angle_value_animation:
     
     def animate(self):
         anim = FuncAnimation(self.fig, self.update, frames=None, interval=self.refresh_interval,
-                             blit=False)
+                             blit=False, cache_frame_data=False)
         return anim

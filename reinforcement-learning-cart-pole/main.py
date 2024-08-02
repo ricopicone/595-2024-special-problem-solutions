@@ -24,12 +24,13 @@ import animation  # Import the animation module (animation.py)
 # Set script parameters as follows:
 
 #%%
-retrain = False  # Retrain the policy and value networks
-save = False  # Save the rewards and policy and value networks
+retrain = True  # Retrain the policy and value networks
+save = True  # Save the rewards and policy and value networks
+visualize = False  # TODO fix True Visualize the cart/pole environment
 file_rewards = 'rewards.npy'  # File to save the rewards
 file_policy = 'policy_network.keras'  # File to save the policy network
 file_value = 'value_network.keras'  # File to save the value network
-n_episodes = 100  # Number of episodes to train from
+n_episodes = 300  # Number of episodes to train from
 
 #%% [markdown]
 # ## Set Up the Cart-Pole Environment
@@ -37,8 +38,10 @@ n_episodes = 100  # Number of episodes to train from
 # Set up the cart-pole environment as follows:
 
 #%%
-# env = gym.make('CartPole-v1', render_mode='human')  # Create environment
-env = gym.make('CartPole-v1', render_mode=None)  # Create environment
+if visualize:
+    env = gym.make('CartPole-v1', render_mode='human')  # Create environment
+else:
+    env = gym.make('CartPole-v1', render_mode=None)  # Create environment
 env.reset()  # Reset the environment to the initial state
 
 #%% [markdown]
@@ -53,7 +56,8 @@ print("Observation space:", env.observation_space)
 
 #%%
 for i in range(20):
-    # time.sleep(0.03)  # Pause loop for rendering
+    if visualize:
+        time.sleep(0.03)  # Pause loop for rendering
     s_new, r_new, term, trunc, info = env.step(
         env.action_space.sample()
     )  # Take a random action
@@ -251,7 +255,7 @@ if retrain:
     policy_network, value_network, rewards = train_policy_value_networks(
         env, policy_network, value_network, updater, 
         n_episodes=n_episodes, gamma=0.99, max_episode_steps=500, 
-        plot=True, print_=True
+        plot=False, print_=True
     )
     if save:
         policy_network.save(file_policy)  # Save the policy network

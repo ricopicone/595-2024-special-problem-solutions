@@ -1,6 +1,6 @@
 .PHONY: main
 	
-title = Deep Reinforcement Learning: Cart Pole
+title = Actor-Critic Deep Reinforcement Learning: Inverted Pendulum on a Cart
 author = Rico A. R. Picone
 
 main: main.pdf # Default document(s) to make
